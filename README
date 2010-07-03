@@ -1,0 +1,3 @@
+Simple arduino-based multiple-door RFID access system used at Hackerspace Brisbane.
+Currently set up to read a Parallax RFID reader on the internal door (hardware serial) and a Seeedstudio RFID reader on the external door (software serial).
+
