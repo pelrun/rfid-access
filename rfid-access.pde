@@ -7,6 +7,27 @@
 
 #include <NewSoftSerial.h>
 #include <EEPROM.h>
+#include <PString.h>
+
+#include <Ethernet.h>
+#include <EthernetDNS.h>
+#include <Twitter.h>
+//#include <MsTimer2.h>
+
+// Ethernet/Twitter globals
+
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte ip[] = { 192, 168, 1, 251 };
+byte gateway[] = { 192, 168, 1, 254 };
+byte subnet[] = { 255, 255, 0, 0 };
+
+#include "twitterconfig.h"
+
+Twitter twitter(TWITTER_AUTH_TOKEN);
+
+char buffer[50];
+
+// Serial globals
 
 NewSoftSerial rollerRfid(OUTER_RFID_RX_PIN, OUTER_RFID_RX_PIN+1); // TX pin not used, put it out of the way
 
@@ -18,8 +39,8 @@ void setup()
   pinMode(REX_PIN, INPUT);     // "request exit" button input
   digitalWrite(REX_PIN, HIGH);
  
-  pinMode(LED_PIN, OUTPUT); // status led
-  digitalWrite(LED_PIN, LOW);  
+//  pinMode(LED_PIN, OUTPUT); // status led
+//  digitalWrite(LED_PIN, LOW);  
  
   // Door reader
   Serial.begin(2400); // RFID reader SOUT pin connected to Serial RX pin at 2400bps
@@ -36,6 +57,8 @@ void setup()
   pinMode(OUTER_OPEN_PIN, OUTPUT); // Setup external door open
   digitalWrite(OUTER_OPEN_PIN, LOW);
  
+  // Ethernet module
+  Ethernet.begin(mac,ip,gateway,subnet);
 }
 
 int matchRfid(Rfid &code)
@@ -74,23 +97,64 @@ int matchRfid(Rfid &code)
 void unlockDoor()
 {
   digitalWrite(INNER_OPEN_PIN, HIGH);
-  digitalWrite(LED_PIN, HIGH);
+//  digitalWrite(LED_PIN, HIGH);
   Serial.println("Opening internal door.");
   delay(2000);
   digitalWrite(INNER_OPEN_PIN, LOW);
-  digitalWrite(LED_PIN, LOW);
+//  digitalWrite(LED_PIN, LOW);
 }
 
 void openRollerDoor()
 {
   digitalWrite(OUTER_OPEN_PIN, HIGH);
-  digitalWrite(LED_PIN, HIGH);
+//  digitalWrite(LED_PIN, HIGH);
   Serial.println("Opening external door.");
   delay(20);
   digitalWrite(OUTER_OPEN_PIN, LOW);
-  digitalWrite(LED_PIN, LOW);
+//  digitalWrite(LED_PIN, LOW);
 }
- 
+
+void tweet(Rfid &code, int access, int door, bool succeeded)
+{
+  PString tweet(buffer,sizeof(buffer));
+
+  if (twitter.checkStatus())
+  {
+    // TODO: queue up tweets
+    return; // previous tweet still going out, can't send another
+  }
+
+  if (door == INNER)
+  {
+    tweet.print("Inner");
+  }
+  else if (door == OUTER)
+  {
+    tweet.print("Outer");
+  }
+  tweet.print(" door ");
+
+  if (!succeeded)
+  {
+    tweet.print("NOT ");
+  }
+  tweet.print("opened: ");
+  tweet.println(code+6);
+
+  bool tweetSent = false;
+
+  for (int i=0;i<5 && !tweetSent;i++)
+  {
+    tweetSent = twitter.post(tweet);
+    delay(1000);
+  }
+
+  if (!tweetSent)
+  {
+    Serial.println("Tweet log failed.");
+  }
+}
+
 void loop()
 {
   Rfid code;
@@ -98,13 +162,16 @@ void loop()
  
   code[10]=0;
  
+  // twitter library needs this called periodically.
+  twitter.checkStatus();
+
   if (!digitalRead(REX_PIN))
   {
     Serial.println("REX button pressed");
     unlockDoor();
   }
 
-  digitalWrite(LED_PIN, LOW);
+//  digitalWrite(LED_PIN, LOW);
   digitalWrite(INNER_OPEN_PIN, LOW);
   digitalWrite(OUTER_OPEN_PIN, LOW);
  
@@ -135,10 +202,12 @@ void loop()
         if(access == INNER || access == BOTH)
         {
           unlockDoor();
+          tweet(code,access,INNER,true);
         }        
         else
         {
           Serial.println("Insufficient rights.");
+          tweet(code,access,INNER,false);
         }
       }
 
@@ -174,10 +243,12 @@ void loop()
         if (access == OUTER || access == BOTH)
         {
           openRollerDoor();
+          tweet(code,access,OUTER,true);
         }
         else
         {
           Serial.println("Insufficient rights.");
+          tweet(code,access,OUTER,false);
         }
       }
       rollerRfid.flush();
@@ -186,5 +257,3 @@ void loop()
   }
  
 }
-
-
