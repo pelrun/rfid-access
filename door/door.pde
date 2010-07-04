@@ -6,12 +6,13 @@
 #define REX_PIN                  7
 
 #include <NewSoftSerial.h>
-#include <EEPROM.h>
 
-NewSoftSerial rollerRfid(OUTER_RFID_RX_PIN, OUTER_RFID_RX_PIN+1); // TX pin not used, put it out of the way
+// We're given the Serial object already, name it something sensible
+#define innerRfidReader Serial
+NewSoftSerial outerRfidReader(OUTER_RFID_RX_PIN, OUTER_RFID_RX_PIN+1); // TX pin not used, put it out of the way
 
-typedef char Rfid[11];
-enum AccessType { INVALID, INNER, OUTER, BOTH, NONE };
+#include "Rfid.h"
+RfidProcessor innerDoorCode(10,13), outerDoorCode(2,3);
 
 void setup()
 {
@@ -22,7 +23,7 @@ void setup()
   digitalWrite(LED_PIN, LOW);  
  
   // Door reader
-  Serial.begin(2400); // RFID reader SOUT pin connected to Serial RX pin at 2400bps
+  innerRfidReader.begin(2400); // RFID reader SOUT pin connected to Serial RX pin at 2400bps
 
   pinMode(INNER_RFID_ENABLE_PIN, OUTPUT);   // RFID /ENABLE pin
   digitalWrite(INNER_RFID_ENABLE_PIN, LOW);
@@ -31,46 +32,14 @@ void setup()
   digitalWrite(INNER_OPEN_PIN, LOW);
 
   // Rollerdoor reader
-  rollerRfid.begin(9600); // seeedstudio rfid reader
+  outerRfidReader.begin(9600); // seeedstudio rfid reader
 
   pinMode(OUTER_OPEN_PIN, OUTPUT); // Setup external door open
   digitalWrite(OUTER_OPEN_PIN, LOW);
  
 }
 
-int matchRfid(Rfid &code)
-{
-  int address = 0;
-  int result = 0;
-  boolean match = false;
- 
-  while(!match)
-  {
-    if((result = EEPROM.read(address*11)) == INVALID)
-    {
-      // end of list
-      Serial.println("No tag match");
-      return NONE;
-    }
-
-    match = true;
-    for(int i=0; i<10; i++)
-    {
-      if(EEPROM.read(address*11+i+1) != code[i])
-      {
-        match = false;
-        break;
-      }
-    }
-    address++;
-  }
- 
-  Serial.print("Match found, access ");
-  Serial.println(result);
- 
-  return result;
-}
-
+// Unlocks the door strike on the inner door for 2s
 void unlockDoor()
 {
   digitalWrite(INNER_OPEN_PIN, HIGH);
@@ -81,6 +50,7 @@ void unlockDoor()
   digitalWrite(LED_PIN, LOW);
 }
 
+// Simulates a press of the open button on the roller door
 void openRollerDoor()
 {
   digitalWrite(OUTER_OPEN_PIN, HIGH);
@@ -90,7 +60,7 @@ void openRollerDoor()
   digitalWrite(OUTER_OPEN_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
 }
- 
+
 void loop()
 {
   Rfid code;
@@ -108,83 +78,36 @@ void loop()
   digitalWrite(INNER_OPEN_PIN, LOW);
   digitalWrite(OUTER_OPEN_PIN, LOW);
  
-  if (Serial.available() > 0) // input waiting from internal rfid reader
+  if (innerRfidReader.available())
   {
-    if ((val = Serial.read()) == 10)
+    if (innerDoorCode.process(innerRfidReader.read()))
     {
-      int bytesread = 0;
-      while (bytesread < 10)
-      {              // read 10 digit code
-        if (Serial.available() > 0)
-        {
-          val = Serial.read();
-          if ((val == 10) || (val == 13))
-          {
-            break;
-          }
-          code[bytesread++] = val;
-        }
-      }
-
-      if(bytesread == 10)
+      if(innerDoorCode.accessLevel == INNER || innerDoorCode.accessLevel == BOTH)
       {
-        Serial.print("TAG detected: ");
-        Serial.println(code);
-        
-        int access = matchRfid(code) & 0xF; // high bits for future 'master' card flag
-        if(access == INNER || access == BOTH)
-        {
-          unlockDoor();
-        }        
-        else
-        {
-          Serial.println("Insufficient rights.");
-        }
+        unlockDoor();
+      }        
+      else
+      {
+        Serial.println("Insufficient rights.");
       }
-
-      Serial.flush();
-      bytesread = 0;
-    }   
+    }
   }
- 
-  if(rollerRfid.available() > 0) // input waiting from external rfid reader
+   
+  if (outerRfidReader.available())
   {
-    if ((val = rollerRfid.read()) == 2)
+    if (outerDoorCode.process(outerRfidReader.read()))
     {
-      int bytesread = 0;
-      while (bytesread < 10)
+      if (outerDoorCode.accessLevel == OUTER || outerDoorCode.accessLevel == BOTH)
       {
-        if (rollerRfid.available() > 0)
-        {
-          val = rollerRfid.read();
-          if ((val == 2) || (val == 3))
-          {
-            break;
-          }
-          code[bytesread++] = val;          
-        }
+        openRollerDoor();
       }
-
-      if (bytesread == 10)
+      else
       {
-        Serial.print("TAG detected: ");
-        Serial.println(code);
-        
-        int access = matchRfid(code) & 0xF; // high bits for future 'master' card flag
-        if (access == OUTER || access == BOTH)
-        {
-          openRollerDoor();
-        }
-        else
-        {
-          Serial.println("Insufficient rights.");
-        }
+        Serial.println("Insufficient rights.");
       }
-      rollerRfid.flush();
-      bytesread = 0;
-    }   
+    }
   }
- 
+  
 }
 
 
