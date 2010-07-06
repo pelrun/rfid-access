@@ -73,7 +73,8 @@ void IrcClient::process(void)
       {
         if (m_response.startsWith(m_commandList[cmdIndex].command))
         {
-          *(m_commandList[cmdIndex].callback)(source,m_response);
+          callbackFunction *cmd = m_commandList[cmdIndex].callback;
+          (*cmd)(source,m_response);
           break;
         }
       }
@@ -95,16 +96,18 @@ void IrcClient::pingReply(void)
 // "ERROR " - something wrong, cap'n!
 // "PING " - *must* respond with "PONG " and the params that came with the ping
 
-void identifyUser(char *source, char *text)
-{
-  m_client.println("USER arduino 8 * arduino");
-}
+//extern "C" {
+  void identifyUser(const String &source, const String &text)
+  {
+    m_client.println("USER arduino 8 * arduino");
+  }
 
-void retryNick(char *source, char *text)
-{
-  // FIXME: need to mangle existing nick and recognise it later!
-  m_client.println("NICK fakenick");
-}
+  void retryNick(const String &source, const String &text)
+  {
+    // FIXME: need to mangle existing nick and recognise it later!
+    m_client.println("NICK fakenick");
+  }
+//}
 
 void IrcClient::initCommandList(int maxCommands)
 {

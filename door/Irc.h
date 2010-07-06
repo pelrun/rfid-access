@@ -4,7 +4,7 @@
 
 #include <inttypes.h>
 extern "C" {
-    typedef void (*callbackFunction)(String &source,String &text);
+    typedef void (*callbackFunction)(const String &source,const String &text);
 }
 
 class IrcCommand
