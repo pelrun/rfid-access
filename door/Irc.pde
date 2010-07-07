@@ -5,10 +5,12 @@
 
 IrcClient::IrcClient(byte *serverIP, int port, char *nick) :
   m_client(serverIP, port),
-  m_nick(nick)
+  m_nick(nick),
+  m_originalNick(nick),
+  m_onConnect(NULL),
+  m_onMessage(NULL),
+  m_reconnectDelay(0)
 {
-  // insure our internal triggers are registered
-  initCommandList(0);
 }
 
 IrcClient::~IrcClient(void)
@@ -16,19 +18,17 @@ IrcClient::~IrcClient(void)
   disconnect();
 }
 
-void IrcClient::begin(void)
-{
-  connect();
-}
-
 void IrcClient::connect(void)
 {
   if (m_client.connect())
   {
-    // only do PASS and NICK here; do USER and JOIN as responses later
-    m_client.println("PASS password\n");
+	// always try the original nick first
+	m_nick = m_originalNick;
+
+    m_client.println("PASS boo");
     m_client.print("NICK ");
     m_client.println(m_nick);
+    m_client.println("USER hsbne 8 * hsbne door");
   }
 }
 
@@ -37,13 +37,25 @@ void IrcClient::disconnect(void)
   if (m_client.connected())
   {
     // quit server
-    m_client.println("QUIT :shutting down");
+    m_client.println("QUIT :bye");
     m_client.stop();
   }
 }
 
 void IrcClient::process(void)
 {
+  if (!m_client.connected())
+  {
+	  if (m_reconnectDelay == 0)
+	  {
+		  m_reconnectDelay = (long)millis()+10000;
+	  }
+	  if ((long)millis() - m_reconnectDelay >= 0)
+	  {
+		  m_reconnectDelay = 0;
+		  connect();
+	  }
+  }
   if (m_client.available())
   {
     char ch = m_client.read();
@@ -55,89 +67,58 @@ void IrcClient::process(void)
     {
       if (m_response.length() == 0) return;
 
-      if (m_response.startsWith("PING"))
-      {
-        pingReply();
-        return;
-      }
-      
       String source("");
 
       if (m_response.charAt(0) == ':')
       {
-        source = m_response.substring(1,m_response.indexOf('!'));
+        source = m_response.substring(1,m_response.indexOf(' '));
         m_response = m_response.substring(m_response.indexOf(' ')+1);
       }
 
-      for (int cmdIndex=0; cmdIndex <= m_commandListLength; cmdIndex++)
+      if (m_response.startsWith("PING "))
       {
-        if (m_response.startsWith(m_commandList[cmdIndex].command))
-        {
-          callbackFunction *cmd = m_commandList[cmdIndex].callback;
-          (*cmd)(source,m_response);
-          break;
-        }
+    	// be sneaky and convert PING into PONG in-place
+        m_response.setCharAt(1,'O');
+    	m_client.println(m_response);
       }
+      else if (m_response.startsWith("001 "))
+      {
+    	  if (m_onConnect != NULL)
+    	  {
+    		  (*m_onConnect)();
+    	  }
+      }
+      else if (m_response.startsWith("433 "))
+      {
+        // Nick collision; we need to assign a new unique nick
+    	m_nick.append('_');
+    	m_client.print("NICK ");
+    	m_client.println(m_nick);
+      }
+      else
+      {
+    	  if (m_onMessage != NULL)
+    	  {
+    		  (*m_onMessage)(source, m_response);
+    	  }
+      }
+
+      m_response = "";
     }
-
   }
 }
 
-void IrcClient::pingReply(void)
+void IrcClient::setOnConnectCallback(callbackFunctionV func)
 {
-  // convert ping into pong and send it
-  m_response.setCharAt(1,'O');
-  m_client.println(m_response);
+  m_onConnect = func;
 }
 
-// "433 " - nick collision, reissue NICK with modified nickname
-// "NOTICE * :*** No Ident response" good spot to fire USER and JOIN msgs
-// "PRIVMSG " - msgs from channels and people; parse further if our nick is present
-// "ERROR " - something wrong, cap'n!
-// "PING " - *must* respond with "PONG " and the params that came with the ping
-
-//extern "C" {
-  void identifyUser(const String &source, const String &text)
-  {
-    m_client.println("USER arduino 8 * arduino");
-  }
-
-  void retryNick(const String &source, const String &text)
-  {
-    // FIXME: need to mangle existing nick and recognise it later!
-    m_client.println("NICK fakenick");
-  }
-//}
-
-void IrcClient::initCommandList(int maxCommands)
+void IrcClient::setOnMessageCallback(callbackFunctionSS func)
 {
-  if (m_commandList != NULL)
-  {
-    free(m_commandList);
-  }
-
-  m_commandListCapacity = maxCommands+2;
-  m_commandList = (IrcCommand*)malloc(m_commandListCapacity*sizeof(IrcCommand));
-  m_commandListLength = 0;
-
-//  registerCommand("PING",pingReply);
-  registerCommand("NOTICE * :*** No Ident response", identifyUser);
-  registerCommand("433 ", retryNick);
+  m_onMessage = func;
 }
 
-void IrcClient::registerCommand(char *cmd, callbackFunction function)
-{
-  if (m_commandListLength >= m_commandListCapacity)
-  {
-    return;
-  }
-
-  m_commandList[m_commandListLength].command = cmd;
-  m_commandList[m_commandListLength].callback = function;
-  m_commandListLength++;
-}
-
-void msg(char *nick, char *text)
+void IrcClient::msg(char *nick, char *text)
 {
   m_client.print("PRIVMSG ");
   m_client.print(nick);
@@ -145,8 +126,23 @@ void msg(char *nick, char *text)
   m_client.println(text);
 }
 
-String IrcClient::getNick(void)
+const String & IrcClient::getNick(void)
 {
   return m_nick;
+}
+
+void IrcClient::write(uint8_t b)
+{
+  m_client.write(b);
+}
+
+void IrcClient::write(const char *str)
+{
+  m_client.write(str);
+}
+
+void IrcClient::write(const uint8_t *buf, size_t size)
+{
+  m_client.write(buf,size);
 }
 

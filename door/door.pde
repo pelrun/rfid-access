@@ -5,6 +5,10 @@
 #define OUTER_RFID_RX_PIN        3
 #define REX_PIN                  7
 
+#define IRC_CHANNEL       "#hsbne"
+
+#include <WString.h>
+
 #include <NewSoftSerial.h>
 
 // We're given the Serial object already, name it something sensible
@@ -13,6 +17,27 @@ NewSoftSerial outerRfidReader(OUTER_RFID_RX_PIN, OUTER_RFID_RX_PIN+1); // TX pin
 
 #include "Rfid.h"
 RfidProcessor innerDoorCode(10,13), outerDoorCode(2,3);
+
+#include "Ethernet.h"
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
+byte ip[] = {192, 168, 1, 252};
+byte gateway[] = {192, 168, 1, 1};
+byte subnet[] = {255, 255, 0, 0};
+
+#include "Irc.h"
+byte freenode[] = {128,237,157,136};
+IrcClient irc(freenode, 6667, "Hsbne|DoorBot");
+
+void ircOnConnect(void)
+{
+	// can join one or multiple channels here
+	irc.println("JOIN " IRC_CHANNEL);
+}
+
+void ircOnMessage(const String &source, const String &message)
+{
+	// look for and respond to triggers
+}
 
 void setup()
 {
@@ -37,6 +62,13 @@ void setup()
   pinMode(OUTER_OPEN_PIN, OUTPUT); // Setup external door open
   digitalWrite(OUTER_OPEN_PIN, LOW);
  
+  // Ethernet services
+  Ethernet.begin(mac, ip, gateway, subnet);
+
+  // Irc services
+  irc.setOnConnectCallback(ircOnConnect);
+  irc.setOnMessageCallback(ircOnMessage);
+  irc.connect();
 }
 
 // Unlocks the door strike on the inner door for 2s
