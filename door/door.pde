@@ -76,10 +76,10 @@ void unlockDoor()
 {
   digitalWrite(INNER_OPEN_PIN, HIGH);
   digitalWrite(LED_PIN, HIGH);
-  Serial.println("Opening internal door.");
   delay(2000);
   digitalWrite(INNER_OPEN_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
+  Serial.println("Internal open.");
 }
 
 // Simulates a press of the open button on the roller door
@@ -87,10 +87,10 @@ void openRollerDoor()
 {
   digitalWrite(OUTER_OPEN_PIN, HIGH);
   digitalWrite(LED_PIN, HIGH);
-  Serial.println("Opening external door.");
   delay(20);
   digitalWrite(OUTER_OPEN_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
+  Serial.println("External open.");
 }
 
 void loop()
@@ -102,8 +102,9 @@ void loop()
  
   if (!digitalRead(REX_PIN))
   {
-    Serial.println("REX button pressed");
+//    Serial.println("REX button pressed");
     unlockDoor();
+    irc.println("PRIVMSG " IRC_CHANNEL " :!!! REX button pressed.");
   }
 
   digitalWrite(LED_PIN, LOW);
@@ -117,10 +118,14 @@ void loop()
       if(innerDoorCode.accessLevel == INNER || innerDoorCode.accessLevel == BOTH)
       {
         unlockDoor();
+        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Inner door opened by ");
+        irc.println(innerDoorCode.code[6]);
       }        
       else
       {
         Serial.println("Insufficient rights.");
+        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Inner door attempt by ");
+        irc.println(innerDoorCode.code[6]);
       }
     }
   }
@@ -132,10 +137,14 @@ void loop()
       if (outerDoorCode.accessLevel == OUTER || outerDoorCode.accessLevel == BOTH)
       {
         openRollerDoor();
+        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Outer door opened by ");
+        irc.println(outerDoorCode.code[6]);
       }
       else
       {
         Serial.println("Insufficient rights.");
+        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Outer door attempt by ");
+        irc.println(innerDoorCode.code[6]);
       }
     }
   }

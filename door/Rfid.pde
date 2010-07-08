@@ -23,7 +23,7 @@ boolean RfidProcessor::process(char ch)
   {
     if (length == 10)
     {
-      Serial.print("TAG detected: ");
+      Serial.print("TAG: ");
       Serial.println(code);
 
       complete = true;
@@ -50,7 +50,7 @@ int RfidProcessor::matchRfid()
     if((result = EEPROM.read(address*11)) == INVALID)
     {
       // end of list
-      Serial.println("No tag match");
+      Serial.println("No match");
       return NONE;
     }
 
@@ -66,7 +66,7 @@ int RfidProcessor::matchRfid()
     address++;
   }
 
-  Serial.print("Match found, access ");
+  Serial.print("Access ");
   Serial.println(result);
 
   return result;
