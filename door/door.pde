@@ -127,6 +127,7 @@ void loop()
         irc.print("PRIVMSG " IRC_CHANNEL " :!!! Inner door attempt by ");
         irc.println(innerDoorCode.code[6]);
       }
+      innerRfidReader.flush();
     }
   }
    
@@ -146,6 +147,7 @@ void loop()
         irc.print("PRIVMSG " IRC_CHANNEL " :!!! Outer door attempt by ");
         irc.println(innerDoorCode.code[6]);
       }
+      outerRfidReader.flush();
     }
   }
   
