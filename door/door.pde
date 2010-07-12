@@ -5,11 +5,17 @@
 #define OUTER_RFID_RX_PIN        3
 #define REX_PIN                  7
 
+#define ENABLE_INNER_DOOR
+#define ENABLE_OUTER_DOOR
+
 #define IRC_CHANNEL       "#hsbne"
 
-#include <WString.h>
-
+// Libraries from Arduiniana.org
 #include <NewSoftSerial.h>
+#include <PString.h>
+#include <Flash.h>
+
+FLASH_STRING(endl, "/n");
 
 // We're given the Serial object already, name it something sensible
 #define innerRfidReader Serial
@@ -28,15 +34,17 @@ byte subnet[] = {255, 255, 0, 0};
 byte freenode[] = {128,237,157,136};
 IrcClient irc(freenode, 6667, "Hsbne|DoorBot");
 
+FLASH_STRING(ircChannel, IRC_CHANNEL);
+
 void ircOnConnect(void)
 {
-	// can join one or multiple channels here
-	irc.println("JOIN " IRC_CHANNEL);
+  // can join one or multiple channels here
+  irc << F("JOIN ") << ircChannel << endl;
 }
 
-void ircOnMessage(const String &source, const String &message)
+void ircOnMessage(const PString &source, const PString &message)
 {
-	// look for and respond to triggers
+  // look for and respond to triggers
 }
 
 void setup()
@@ -49,6 +57,7 @@ void setup()
  
   // Door reader
   innerRfidReader.begin(2400); // RFID reader SOUT pin connected to Serial RX pin at 2400bps
+  Serial << F("Reset") << endl;
 
   pinMode(INNER_RFID_ENABLE_PIN, OUTPUT);   // RFID /ENABLE pin
   digitalWrite(INNER_RFID_ENABLE_PIN, LOW);
@@ -79,7 +88,7 @@ void unlockDoor()
   delay(2000);
   digitalWrite(INNER_OPEN_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
-  Serial.println("Internal open.");
+  Serial << F("Internal open.") << endl;
 }
 
 // Simulates a press of the open button on the roller door
@@ -90,7 +99,7 @@ void openRollerDoor()
   delay(20);
   digitalWrite(OUTER_OPEN_PIN, LOW);
   digitalWrite(LED_PIN, LOW);
-  Serial.println("External open.");
+  Serial << F("External open.") << endl;
 }
 
 void loop()
@@ -102,15 +111,16 @@ void loop()
  
   if (!digitalRead(REX_PIN))
   {
-//    Serial.println("REX button pressed");
+    Serial << F("REX button pressed") << endl;
     unlockDoor();
-    irc.println("PRIVMSG " IRC_CHANNEL " :!!! REX button pressed.");
+    irc << F("PRIVMSG ") << ircChannel << F(" :!!! REX button pressed.") << endl;
   }
 
   digitalWrite(LED_PIN, LOW);
   digitalWrite(INNER_OPEN_PIN, LOW);
   digitalWrite(OUTER_OPEN_PIN, LOW);
  
+#ifdef ENABLE_INNER_DOOR
   if (innerRfidReader.available())
   {
     if (innerDoorCode.process(innerRfidReader.read()))
@@ -118,19 +128,19 @@ void loop()
       if(innerDoorCode.accessLevel == INNER || innerDoorCode.accessLevel == BOTH)
       {
         unlockDoor();
-        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Inner door opened by ");
-        irc.println(innerDoorCode.code[6]);
+        irc << F("PRIVMSG ") << ircChannel << F(" :!!! Inner door opened by ") << innerDoorCode.code[6] << endl;
       }        
       else
       {
-        Serial.println("Insufficient rights.");
-        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Inner door attempt by ");
-        irc.println(innerDoorCode.code[6]);
+        Serial << F("Insufficient rights.") << endl;
+        irc << F("PRIVMSG ") << ircChannel << F(" :!!! Inner door attempt by ") << innerDoorCode.code[6] << endl;
       }
       innerRfidReader.flush();
     }
   }
-   
+#endif // ENABLE_INNER_DOOR
+
+#ifdef ENABLE_OUTER_DOOR
   if (outerRfidReader.available())
   {
     if (outerDoorCode.process(outerRfidReader.read()))
@@ -138,19 +148,18 @@ void loop()
       if (outerDoorCode.accessLevel == OUTER || outerDoorCode.accessLevel == BOTH)
       {
         openRollerDoor();
-        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Outer door opened by ");
-        irc.println(outerDoorCode.code[6]);
+        irc << F("PRIVMSG ") << ircChannel << F(" :!!! Outer door opened by ") << outerDoorCode.code[6] << endl;
       }
       else
       {
-        Serial.println("Insufficient rights.");
-        irc.print("PRIVMSG " IRC_CHANNEL " :!!! Outer door attempt by ");
-        irc.println(innerDoorCode.code[6]);
+        Serial << F("Insufficient rights.") << endl;
+        irc << F("PRIVMSG ") << ircChannel << F(" :!!! Outer door attempt by ") << outerDoorCode.code[6] << endl;
       }
       outerRfidReader.flush();
     }
   }
-  
+#endif // ENABLE_OUTER_DOOR
+
 }
 
 

@@ -1,4 +1,8 @@
 #include <EEPROM.h>
+
+// Libraries from arduiniana.org
+#include <Flash.h>
+
 #include "Rfid.h"
 
 RfidProcessor::RfidProcessor()
@@ -23,8 +27,7 @@ boolean RfidProcessor::process(char ch)
   {
     if (length == 10)
     {
-      Serial.print("TAG: ");
-      Serial.println(code);
+      Serial << F("TAG: ") << code << endl;
 
       complete = true;
       accessLevel = matchRfid();
@@ -50,7 +53,7 @@ int RfidProcessor::matchRfid()
     if((result = EEPROM.read(address*11)) == INVALID)
     {
       // end of list
-      Serial.println("No match");
+      Serial << F("No match") << endl;
       return NONE;
     }
 
@@ -66,8 +69,7 @@ int RfidProcessor::matchRfid()
     address++;
   }
 
-  Serial.print("Access ");
-  Serial.println(result);
+  Serial << F("Access ") << result << endl;
 
   return result;
 }

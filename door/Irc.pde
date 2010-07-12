@@ -1,12 +1,24 @@
+#include <string.h>
+
 #include <Client.h>
 #include <Ethernet.h>
-#include <WString.h>
+
+// Libraries from Arduiniana.org
+#include <Flash.h>
+#include <PString.h>
+
 #include "Irc.h"
+
+// multiply used string literals go here
+// FLASH_STRING(endl,"/n");
+FLASH_STRING(nickCmd, "NICK ");
 
 IrcClient::IrcClient(byte *serverIP, int port, char *nick) :
   m_client(serverIP, port),
-  m_nick(nick),
-  m_originalNick(nick),
+  m_response(m_responseBuffer, sizeof(m_responseBuffer)),
+  m_source(m_sourceBuffer, sizeof(m_sourceBuffer)),
+  m_nick(m_nickBuffer, sizeof(m_nickBuffer), nick),
+  m_originalNick(m_origNickBuffer, sizeof(m_origNickBuffer), nick),
   m_onConnect(NULL),
   m_onMessage(NULL),
   m_reconnectDelay(0)
@@ -25,10 +37,9 @@ void IrcClient::connect(void)
 	// always try the original nick first
 	m_nick = m_originalNick;
 
-    m_client.println("PASS boo");
-    m_client.print("NICK ");
-    m_client.println(m_nick);
-    m_client.println("USER hsbne 8 * hsbne door");
+    m_client << F("PASS b") << endl;
+    m_client << nickCmd << m_nick << endl;
+    m_client << F("USER hsbne 8 * hsbne door") << endl;
   }
 }
 
@@ -37,9 +48,21 @@ void IrcClient::disconnect(void)
   if (m_client.connected())
   {
     // quit server
-    m_client.println("QUIT :bye");
+    m_client << F("QUIT :bye") << endl;
     m_client.stop();
   }
+}
+
+boolean startsWith(const char *text, const char *search)
+{
+	for (int i = 0; i<strlen(search); i++)
+	{
+		if (text[i] != search[i])
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 void IrcClient::process(void)
@@ -61,49 +84,54 @@ void IrcClient::process(void)
     char ch = m_client.read();
     if (ch != 10 && ch != 13)
     {
-      m_response.append(ch);
+      m_response += ch;
     }
     else
     {
       if (m_response.length() == 0) return;
 
-      String source("");
+      m_source.begin();
 
-      if (m_response.charAt(0) == ':')
+      if (m_response[0] == ':')
       {
-        source = m_response.substring(1,m_response.indexOf(' '));
-        m_response = m_response.substring(m_response.indexOf(' ')+1);
+        // Using the buffer directly here because PString forces const access otherwise :P
+        char *sourceDelim = strchr(m_responseBuffer, ' ');
+        if (sourceDelim != NULL)
+        {
+          *sourceDelim = 0;
+          m_source = m_responseBuffer[1];
+          m_response = *(sourceDelim+1);
+        }
       }
 
-      if (m_response.startsWith("PING "))
+      if (startsWith(m_response, "PING "))
       {
-    	// be sneaky and convert PING into PONG in-place
-        m_response.setCharAt(1,'O');
-    	m_client.println(m_response);
+        // convert PING into PONG in place
+        m_responseBuffer[1] = 'O';
+        m_client.println(m_response);
       }
-      else if (m_response.startsWith("001 "))
+      else if (startsWith(m_response, "001 "))
       {
-    	  if (m_onConnect != NULL)
-    	  {
-    		  (*m_onConnect)();
-    	  }
+        if (m_onConnect != NULL)
+        {
+          (*m_onConnect)();
+        }
       }
-      else if (m_response.startsWith("433 "))
+      else if (startsWith(m_response, "433 "))
       {
         // Nick collision; we need to assign a new unique nick
-    	m_nick.append('_');
-    	m_client.print("NICK ");
-    	m_client.println(m_nick);
+        m_nick += "_";
+        m_client << nickCmd << m_nick << endl;
       }
       else
       {
-    	  if (m_onMessage != NULL)
-    	  {
-    		  (*m_onMessage)(source, m_response);
-    	  }
+        if (m_onMessage != NULL)
+        {
+          (*m_onMessage)(m_source, m_response);
+        }
       }
 
-      m_response = "";
+      m_response.begin();
     }
   }
 }
@@ -120,13 +148,10 @@ void IrcClient::setOnMessageCallback(callbackFunctionSS func)
 
 void IrcClient::msg(char *nick, char *text)
 {
-  m_client.print("PRIVMSG ");
-  m_client.print(nick);
-  m_client.print(" :");
-  m_client.println(text);
+  m_client << F("PRIVMSG ") << nick << F(" :") << text << endl;
 }
 
-const String & IrcClient::getNick(void)
+const PString & IrcClient::getNick(void)
 {
   return m_nick;
 }
